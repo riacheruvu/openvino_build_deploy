@@ -1,0 +1,6 @@
+openvino-dev
+openvino
+openvino-nightly
+optimum
+optimum-intel
+transformers>=4.38.1
