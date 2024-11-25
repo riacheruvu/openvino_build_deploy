@@ -1,48 +1,72 @@
 import unittest
-from pathlib import Path
+from main import load_pipeline, get_available_devices, generate_images
+from PIL import Image
 import numpy as np
-#Define main functions in a .py file
-from main import convert, get_model, run
+from pathlib import Path
+import os
 
-#Phase 1: Test model conversion and that model path exists
-class TestModelConversion(unittest.TestCase):
-    def test_model_conversion(self):
-        model_name = "yolo11n"  # Replace with your model name
-        model_dir = Path("model/")  # Replace with your model directory path
-        
-        ov_model_path, ov_int8_model_path = convert(model_name, model_dir)
-        
-        self.assertTrue(ov_model_path.exists(), "FP16 model conversion failed")
-        self.assertTrue(ov_int8_model_path.exists(), "INT8 model conversion failed")
+class TestPipeline(unittest.TestCase):
 
-#Phase 2: Test simple model input
-class TestModelRunning(unittest.TestCase):
-    def test_model_running(self):
-        model_path = Path("/path/to/your/ov_model.xml")  # Replace with your model path
-        model = get_model(model_path)
-        
-        input_data = np.random.rand(1, 3, 640, 640).astype(np.float32)  # Example input data
-        results = model(input_data)
-        
-        self.assertIsNotNone(results, "Model inference failed")
+    def test_available_devices(self):
+        # Test to ensure there are devices available for inference.
+        devices = get_available_devices()
+        self.assertTrue(len(devices) > 0, "No devices available for inference")
+        print("Success: Available devices found. Full list:", devices)
 
-#Phase 3: Test end-to-end demo or ref kit
-class TestDemo(unittest.TestCase):
-    def test_end_to_end_demo(self):
-        video_path = "path/to/your/video.mp4"  # Replace with your video path
-        model_paths = (Path("/path/to/ov_model.xml"), Path("/path/to/ov_int8_model.xml"))  # Replace with your model paths
-        zones_config_file = "path/to/zones_config.json"  # Replace with your (zones) config file path
-        people_limit = 3
-        model_name = "your_model_name"  # Replace with your model name
-        colorful = False
-        
+    def test_load_pipeline(self):
+        # Test if the pipeline loads successfully on a specific device.
+        model_name = "OpenVINO/LCM_Dreamshaper_v7-fp16-ov"  # Default model name
+        device = "GPU"  # Use CPU as the device for testing
+        loaded_device = load_pipeline(model_name, device)
+        self.assertEqual(loaded_device, device, "Failed to load pipeline to the specified device")
+        print("Success: Pipeline loaded successfully on device:", device)
+
+    def test_generate_images(self):
+        # Test the generation of images from the pipeline using default parameters.
+        prompt = "A sail boat on a grass field with mountains in the morning and sunny day"  # Default prompt
+        seed = 0  # Default seed value
+        size = 512  # Default image size
+        guidance_scale = 8.0  # Default guidance scale for base
+        num_inference_steps = 5  # Default number of inference steps
+        randomize_seed = True  # Default randomize seed value
+        device = "GPU"  # Default inference device
+        endless_generation = False  # Default endless generation
+        model_name = "OpenVINO/LCM_Dreamshaper_v7-fp16-ov"  # Set a valid model name
+
+        # Load the pipeline before generating images
+        load_pipeline(model_name, device)
+
+        # Generator function call, should yield images and processing time
+        image_generator = generate_images(
+            prompt, seed, size, guidance_scale, num_inference_steps, randomize_seed, device, endless_generation
+        )
+
         try:
-            run(video_path, model_paths, zones_config_file, people_limit, model_name, colorful)
-        except Exception as e:
-            self.fail(f"End-to-end demo test failed: {str(e)}")
+            result_image, processing_time = next(image_generator)
+            self.assertIsNotNone(result_image, "Image generation failed - No image returned.")
+            self.assertIsInstance(processing_time, float, "Image generation failed - Processing time not a float.")
+
+            # Define the directory and find an available filename incrementally
+            images_dir = Path("generated_images")
+            images_dir.mkdir(exist_ok=True)  # Create directory if it doesn't exist
+
+            # Find the next available filename (e.g., test_image_1.png, test_image_2.png, etc.)
+            image_index = 1
+            while (images_dir / f"test_image_{image_index}.png").exists():
+                image_index += 1
+
+            result_image_path = images_dir / f"test_image_{image_index}.png"
+            
+            # Save the generated image for inspection
+            result_image_pil = Image.fromarray(np.array(result_image))
+            result_image_pil.save(result_image_path)
+
+            # Verify that the image was saved successfully
+            self.assertTrue(os.path.exists(result_image_path), f"Image was not saved at {result_image_path}")
+            print("Success: Image generated successfully with processing time:", processing_time)
+            print("Image saved at:", result_image_path)
+        except StopIteration:
+            self.fail("Image generation failed - Generator function stopped unexpectedly.")
 
 if __name__ == '__main__':
     unittest.main()
-
-
-    
